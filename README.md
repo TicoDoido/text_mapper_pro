@@ -75,8 +75,6 @@ Ao final:
 - Logs detalhados em tempo real
 ---
 
-## 🖥️ Interface
-
 ![Tela principal](screenshots/exemple.png)
 
 
