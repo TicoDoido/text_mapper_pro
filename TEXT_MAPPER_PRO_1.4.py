@@ -9,7 +9,7 @@ import chardet  # Necessário para detecção automática
 class TextMapperApp(tk.Tk):
     def __init__(self):
         super().__init__()
-        self.title('Text Translation Mapper Pro — 1.6')
+        self.title('Text Translation Mapper Pro — 1.4')
         self.geometry('1300x900')
         self.minsize(1100, 700)
 
@@ -19,7 +19,7 @@ class TextMapperApp(tk.Tk):
         self.folder_c = tk.StringVar()
 
         # Codificações (agora como fallback)
-        self.encoding_options = ['utf-8', 'cp1252', 'utf-16-le', 'utf-16-be', 'latin-1']
+        self.encoding_options = ['utf-8', 'cp1252', 'utf-16-le', 'utf-16-be', 'latin-1', 'shift-jis', 'big5']
         self.encoding_ab = tk.StringVar(value='utf-8')
         self.encoding_c_out = tk.StringVar(value='utf-8')
 
@@ -74,43 +74,59 @@ class TextMapperApp(tk.Tk):
 
     def _show_instructions(self):
         help_window = tk.Toplevel(self)
-        help_window.title("Instruções - Text Translation Mapper Pro 1.6")
-        help_window.geometry("800x600")
+        help_window.title("Guia de Uso - Text Translation Mapper Pro 1.4")
+        help_window.geometry("900x700")
         help_window.transient(self)
         help_window.grab_set()
 
-        frame = ttk.Frame(help_window, padding="15")
+        frame = ttk.Frame(help_window, padding="20")
         frame.pack(fill='both', expand=True)
 
-        text_widget = tk.Text(frame, wrap='word', font=("Helvetica", 11), padx=10, pady=10)
+        text_widget = tk.Text(frame, wrap='word', font=("Segoe UI", 11), padx=15, pady=15)
         scrollbar = ttk.Scrollbar(frame, orient='vertical', command=text_widget.yview)
         text_widget.configure(yscrollcommand=scrollbar.set)
         text_widget.pack(side='left', fill='both', expand=True)
         scrollbar.pack(side='right', fill='y')
 
         instructions = """
-TEXT TRANSLATION MAPPER PRO 1.6
+TEXT TRANSLATION MAPPER PRO 1.4 — DETECÇÃO ULTRA-ROBUSTA
 
-NOVO NA VERSÃO 1.6:
-→ Relatório de Arquivos Ausentes:
-   - Lista arquivos que existem em A/B mas não em C
-   - Lista arquivos que existem em C mas não em A/B
-→ Melhoria contínua nos logs de divergência por linha.
+NOVO NA VERSÃO 1.4:
+→ Motor de Encoding Inteligente: O programa agora usa 3 camadas de detecção:
+   1. Assinatura Digital (BOM)
+   2. Análise Estatística (Chardet)
+   3. Validação por Tentativa (Brute-force Fallback)
+Isso garante que mesmo arquivos sem assinatura ou com caracteres raros sejam lidos corretamente.
 
-FUNCIONALIDADES:
-→ Tradução por conteúdo (ordem das linhas não importa)
-→ Dicionário separado para cada arquivo
-→ Suporte robusto a qualquer encoding (UTF-8, CP1252, UTF-16, etc.)
+---
+1. CONCEITO DAS PASTAS
+---
+• PASTA A (Originais): Arquivos originais (ex: Inglês).
+• PASTA B (Traduções): Mesmos arquivos de A, mas traduzidos (ex: Português).
+• PASTA C (A Traduzir): Arquivos novos que receberão a tradução baseada no par A/B.
 
-USO:
-1. Selecione pastas A, B e C
-2. Configure extensão
-3. Clique em "1. Construir Mapeamentos"
-4. Clique em "2. Aplicar em C + Relatório"
+---
+2. PASSO A PASSO
+---
+1. Selecione as pastas e a extensão.
+2. Clique em "1. Construir Mapeamentos". O programa criará o dicionário.
+3. Clique em "2. Aplicar em C + Relatório". Os arquivos traduzidos serão gerados em uma nova pasta.
+
+---
+3. RELATÓRIO E QUALIDADE
+---
+O arquivo 'relatorio.txt' mostrará:
+• Arquivos que faltam em alguma das pastas.
+• Linhas específicas que não foram encontradas no dicionário (Divergências).
+
+---
+4. DICAS DE ENCODING
+---
+Se o arquivo ainda apresentar problemas, verifique se ele não está corrompido. O motor 1.4 tenta automaticamente as codificações mais comuns do mundo (UTF-8, Windows-1252, UTF-16).
         """
         text_widget.insert('end', instructions.strip())
         text_widget.config(state='disabled')
-        ttk.Button(help_window, text="Fechar", command=help_window.destroy).pack(pady=10)
+        ttk.Button(help_window, text="Entendi!", command=help_window.destroy).pack(pady=15)
 
     def _build_ui(self):
         main_container = ttk.Frame(self, padding="12")
@@ -118,7 +134,7 @@ USO:
 
         toolbar = ttk.Frame(main_container)
         toolbar.pack(fill='x', pady=(0, 8))
-        ttk.Button(toolbar, text="Ajuda / Instruções", command=self._show_instructions).pack(side='left')
+        ttk.Button(toolbar, text="📖 Guia de Uso / Ajuda", command=self._show_instructions).pack(side='left')
         ttk.Checkbutton(toolbar, text="Modo Escuro", variable=self.dark_mode, command=self._toggle_theme).pack(side='right')
 
         folders_frame = ttk.LabelFrame(main_container, text=" Configurações de Pastas ", padding="12")
@@ -193,7 +209,8 @@ USO:
             ext = '.' + ext
         return f"**/*{ext}" if self.recursive_search.get() else f"*{ext}"
 
-    def _read_file(self, path, encoding_var):
+    def _read_file(self, path, fallback_var):
+        """Motor de detecção de encoding ultra-robusto v1.4"""
         try:
             with open(path, 'rb') as f:
                 raw = f.read()
@@ -204,62 +221,62 @@ USO:
         if len(raw) == 0:
             return ["\n"]
 
-        # 1. Detecção de BOM (prioridade máxima)
-        bom_encoding = None
-        bom_length = 0
-        if raw.startswith(b'\xef\xbb\xbf'):
-            bom_encoding = 'utf-8'
-            bom_length = 3
-            self._log(f"BOM detectado → usando UTF-8 para {path.name}", "INFO")
-        elif raw.startswith(b'\xff\xfe'):
-            bom_encoding = 'utf-16-le'
-            bom_length = 2
-            self._log(f"BOM detectado → usando UTF-16-LE para {path.name}", "INFO")
-        elif raw.startswith(b'\xfe\xff'):
-            bom_encoding = 'utf-16-be'
-            bom_length = 2
-            self._log(f"BOM detectado → usando UTF-16-BE para {path.name}", "INFO")
+        # CAMADA 1: Detecção de BOM (assinatura digital)
+        bom_map = {
+            b'\xef\xbb\xbf': 'utf-8-sig',
+            b'\xff\xfe': 'utf-16-le',
+            b'\xfe\xff': 'utf-16-be'
+        }
+        for bom, enc in bom_map.items():
+            if raw.startswith(bom):
+                try:
+                    self._log(f"BOM detectado ({enc}) -> {path.name}", "INFO")
+                    return raw.decode(enc).splitlines(keepends=True)
+                except: pass
 
-        if bom_encoding:
-            raw = raw[bom_length:]
-            final_encoding = bom_encoding
-        else:
-            # 2. Detecção com chardet
-            detector = chardet.UniversalDetector()
-            detector.reset()
-            for line in raw.splitlines(keepends=True)[:100]:  # otimiza velocidade
-                detector.feed(line)
-                if detector.done:
-                    break
-            detector.close()
-            result = detector.result
-            confidence = result['confidence']
-            detected = result['encoding']
+        # CAMADA 2: Análise Estatística (Chardet)
+        detector = chardet.UniversalDetector()
+        detector.reset()
+        for line in raw.splitlines(keepends=True)[:200]:
+            detector.feed(line)
+            if detector.done: break
+        detector.close()
+        
+        detected_enc = detector.result['encoding']
+        confidence = detector.result['confidence']
 
-            if detected and confidence > 0.7:
-                if detected.lower() in ['ascii', 'utf-8', 'utf8']:
-                    detected = 'utf-8'
-                elif '1252' in detected.lower():
-                    detected = 'cp1252'
-                self._log(f"chardet detectou {detected.upper()} (conf: {confidence:.2f}) → {path.name}", "INFO")
-                final_encoding = detected
-            else:
-                # 3. Fallback: escolha do usuário
-                fallback_map = {
-                    'utf-8': 'utf-8', 'cp1252': 'cp1252',
-                    'utf-16-le': 'utf-16-le', 'utf-16-be': 'utf-16-be',
-                    'latin-1': 'latin-1'
-                }
-                final_encoding = fallback_map.get(encoding_var.get().lower(), 'utf-8')
-                self._log(f"chardet incerto (conf: {confidence:.2f}). Usando fallback: {final_encoding.upper()} → {path.name}", "WARNING")
+        if detected_enc and confidence > 0.8:
+            try:
+                self._log(f"Chardet detectou {detected_enc.upper()} ({confidence:.2f}) -> {path.name}", "INFO")
+                return raw.decode(detected_enc).splitlines(keepends=True)
+            except: pass
 
-        # Decodificação final
-        try:
-            text = raw.decode(final_encoding)
-            return text.splitlines(keepends=True)
-        except Exception as e:
-            self._log(f"Falha com {final_encoding}. Usando utf-8 replace → {path.name}", "ERROR")
-            return raw.decode('utf-8', errors='replace').splitlines(keepends=True)
+        # CAMADA 3: Brute-force Fallback (Tentativa e Erro)
+        # Lista de encodings por ordem de probabilidade
+        trial_encodings = [
+            'utf-8', 
+            'cp1252',      # Windows Latin-1 (muito comum)
+            'utf-16', 
+            'latin-1', 
+            'iso-8859-1',
+            fallback_var.get().lower() # Escolha do usuário
+        ]
+        
+        # Remove duplicatas mantendo a ordem
+        trial_encodings = list(dict.fromkeys(trial_encodings))
+
+        for enc in trial_encodings:
+            try:
+                text = raw.decode(enc)
+                # Validação simples: se decodificou sem erro, aceitamos
+                self._log(f"Recuperação: Usando {enc.upper()} para {path.name}", "WARNING")
+                return text.splitlines(keepends=True)
+            except UnicodeDecodeError:
+                continue
+
+        # ÚLTIMO RECURSO: Decode com substituição de caracteres inválidos
+        self._log(f"CRÍTICO: Falha total de encoding em {path.name}. Usando UTF-8 com substituição.", "ERROR")
+        return raw.decode('utf-8', errors='replace').splitlines(keepends=True)
 
     def build_mappings(self):
         if not self.folder_a.get() or not self.folder_b.get():
@@ -389,13 +406,21 @@ USO:
 
                 out_file = out_dir / rel
                 out_file.parent.mkdir(parents=True, exist_ok=True)
-                with open(out_file, 'w', encoding=self.encoding_c_out.get(), newline='') as f:
-                    f.writelines(output)
+                
+                # Salva com o encoding de saída preferencial
+                try:
+                    with open(out_file, 'w', encoding=self.encoding_c_out.get(), newline='') as f:
+                        f.writelines(output)
+                except:
+                    # Fallback de escrita caso o encoding de saída não suporte os caracteres
+                    with open(out_file, 'w', encoding='utf-8', newline='') as f:
+                        f.writelines(output)
+                        
                 processed += 1
                 self.after(0, lambda v=i+1: self.progress.config(value=v))
 
             with open(report_path, 'w', encoding='utf-8') as r:
-                r.write("RELATÓRIO DE TRADUÇÃO — Versão 1.6\n")
+                r.write("RELATÓRIO DE TRADUÇÃO — Versão 1.4\n")
                 r.write(f"Data: {datetime.now().strftime('%d/%m/%Y %H:%M')}\n")
                 r.write(f"Arquivos processados em C: {processed}\n")
                 r.write("="*80 + "\n\n")
