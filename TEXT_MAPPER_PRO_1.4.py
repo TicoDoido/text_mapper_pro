@@ -9,7 +9,7 @@ import chardet  # Necessário para detecção automática
 class TextMapperApp(tk.Tk):
     def __init__(self):
         super().__init__()
-        self.title('Text Translation Mapper Pro — 1.4')
+        self.title('Text Translation Mapper Pro — 1.6')
         self.geometry('1300x900')
         self.minsize(1100, 700)
 
@@ -74,7 +74,7 @@ class TextMapperApp(tk.Tk):
 
     def _show_instructions(self):
         help_window = tk.Toplevel(self)
-        help_window.title("Instruções - Text Translation Mapper Pro 1.8")
+        help_window.title("Instruções - Text Translation Mapper Pro 1.6")
         help_window.geometry("800x600")
         help_window.transient(self)
         help_window.grab_set()
@@ -89,14 +89,13 @@ class TextMapperApp(tk.Tk):
         scrollbar.pack(side='right', fill='y')
 
         instructions = """
-TEXT TRANSLATION MAPPER PRO 1.4
+TEXT TRANSLATION MAPPER PRO 1.6
 
-NOVO NA VERSÃO 1.4:
-→ Detecção automática inteligente de codificação:
-   1. Prioridade máxima: BOM (se presente)
-   2. Depois: chardet (detecção estatística)
-   3. Fallback: escolha do usuário
-→ Logs detalhados mostrando exatamente qual encoding foi usado
+NOVO NA VERSÃO 1.6:
+→ Relatório de Arquivos Ausentes:
+   - Lista arquivos que existem em A/B mas não em C
+   - Lista arquivos que existem em C mas não em A/B
+→ Melhoria contínua nos logs de divergência por linha.
 
 FUNCIONALIDADES:
 → Tradução por conteúdo (ordem das linhas não importa)
@@ -108,8 +107,6 @@ USO:
 2. Configure extensão
 3. Clique em "1. Construir Mapeamentos"
 4. Clique em "2. Aplicar em C + Relatório"
-
-Agora funciona com praticamente qualquer arquivo texto do mundo! 🚀
         """
         text_widget.insert('end', instructions.strip())
         text_widget.config(state='disabled')
@@ -244,8 +241,6 @@ Agora funciona com praticamente qualquer arquivo texto do mundo! 🚀
                     detected = 'utf-8'
                 elif '1252' in detected.lower():
                     detected = 'cp1252'
-                elif 'latin' in detected.lower():
-                    detected = 'latin-1'
                 self._log(f"chardet detectou {detected.upper()} (conf: {confidence:.2f}) → {path.name}", "INFO")
                 final_encoding = detected
             else:
@@ -357,18 +352,27 @@ Agora funciona com praticamente qualquer arquivo texto do mundo! 🚀
 
         def worker():
             pattern = self._get_pattern()
-            files_c = list(Path(self.folder_c.get()).glob(pattern))
-            self.after(0, lambda: self.progress.config(maximum=len(files_c), value=0))
+            files_c_paths = list(Path(self.folder_c.get()).glob(pattern))
+            files_c_rel = {f.relative_to(Path(self.folder_c.get())).as_posix() for f in files_c_paths}
+            
+            # Arquivos em A/B mas não em C
+            missing_in_c = sorted(set(self.mappings.keys()) - files_c_rel)
+            # Arquivos em C mas não em A/B
+            missing_in_ab = sorted(files_c_rel - set(self.mappings.keys()))
 
-            untranslated = []
+            self.after(0, lambda: self.progress.config(maximum=len(files_c_paths), value=0))
+
+            untranslated_by_file = {}
             processed = 0
 
-            for i, file_c in enumerate(files_c):
+            for i, file_c in enumerate(files_c_paths):
                 rel = file_c.relative_to(Path(self.folder_c.get())).as_posix()
                 lines_c = self._read_file(file_c, self.encoding_c_out)
                 mapping = self.mappings.get(rel, {})
 
                 output = []
+                file_issues = []
+                
                 for idx, line in enumerate(lines_c):
                     stripped = line.strip()
                     if stripped == "":
@@ -378,7 +382,10 @@ Agora funciona com praticamente qualquer arquivo texto do mundo! 🚀
                         output.append(mapping[stripped])
                     else:
                         output.append(line)
-                        untranslated.append(f"Arquivo: {rel} | Linha {idx+1} | Texto: \"{stripped}\"")
+                        file_issues.append(f"Linha {idx+1}: \"{stripped}\"")
+
+                if file_issues:
+                    untranslated_by_file[rel] = file_issues
 
                 out_file = out_dir / rel
                 out_file.parent.mkdir(parents=True, exist_ok=True)
@@ -388,17 +395,43 @@ Agora funciona com praticamente qualquer arquivo texto do mundo! 🚀
                 self.after(0, lambda v=i+1: self.progress.config(value=v))
 
             with open(report_path, 'w', encoding='utf-8') as r:
-                r.write("RELATÓRIO — Versão 1.8 (Detecção Automática)\n")
+                r.write("RELATÓRIO DE TRADUÇÃO — Versão 1.6\n")
                 r.write(f"Data: {datetime.now().strftime('%d/%m/%Y %H:%M')}\n")
-                r.write(f"Arquivos processados: {processed}\n")
+                r.write(f"Arquivos processados em C: {processed}\n")
                 r.write("="*80 + "\n\n")
-                if untranslated:
-                    r.write("LINHAS NÃO TRADUZIDAS:\n\n")
-                    r.write("\n".join(untranslated[:1000]))
-                    if len(untranslated) > 1000:
-                        r.write(f"\n... e mais {len(untranslated)-1000} linhas")
+                
+                # Seção de Arquivos Ausentes
+                r.write("CONTROLE DE ARQUIVOS:\n")
+                r.write("-" * 80 + "\n")
+                if missing_in_c:
+                    r.write(f"AVISO: {len(missing_in_c)} arquivos encontrados em A/B mas AUSENTES na pasta C:\n")
+                    for m in missing_in_c:
+                        r.write(f"  [!] {m}\n")
                 else:
-                    r.write("SUCESSO TOTAL! Todas as linhas traduzíveis foram processadas.\n")
+                    r.write("✓ Todos os arquivos de A/B estão presentes em C.\n")
+                
+                r.write("\n")
+                
+                if missing_in_ab:
+                    r.write(f"AVISO: {len(missing_in_ab)} arquivos encontrados em C mas SEM MAPEAMENTO em A/B:\n")
+                    for m in missing_in_ab:
+                        r.write(f"  [?] {m}\n")
+                else:
+                    r.write("✓ Todos os arquivos de C possuem mapeamento correspondente em A/B.\n")
+                
+                r.write("\n" + "="*80 + "\n\n")
+
+                # Seção de Divergências de Conteúdo
+                if untranslated_by_file:
+                    r.write("DIVERGÊNCIAS DE CONTEÚDO (LINHAS NÃO MAPEADAS):\n")
+                    r.write("-" * 80 + "\n")
+                    for rel_path, issues in untranslated_by_file.items():
+                        r.write(f"\nARQUIVO: {rel_path}\n")
+                        for issue in issues:
+                            r.write(f"  → {issue}\n")
+                        r.write("-" * 40 + "\n")
+                else:
+                    r.write("SUCESSO TOTAL! Todas as linhas dos arquivos processados foram traduzidas.\n")
 
             self.after(0, lambda: self._apply_finished(processed, out_dir, report_path))
 
