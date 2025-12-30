@@ -73,9 +73,6 @@ Ao final:
 - Preview do dicionário do arquivo selecionado
 - Barra de progresso
 - Logs detalhados em tempo real
-
-*(Recomendado adicionar screenshots aqui)*
-
 ---
 
 ## 📦 Requisitos
