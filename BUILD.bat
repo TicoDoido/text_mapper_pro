@@ -1,0 +1,1 @@
+pyinstaller --onefile --windowed --icon=image.ico TEXT_MAPPER_PRO_1.4.py
