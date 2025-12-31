@@ -10,9 +10,9 @@ import difflib
 class TextMapperApp(tk.Tk):
     def __init__(self):
         super().__init__()
-        self.title('Text Translation Mapper Pro — 1.4.1')
-        self.geometry('1100x630')
-        self.minsize(750, 600)
+        self.title('Text Translation Mapper Pro — 1.5')
+        self.geometry('1350x950')
+        self.minsize(1200, 750)
 
         # Estados
         self.folder_a = tk.StringVar()
@@ -31,7 +31,7 @@ class TextMapperApp(tk.Tk):
         self.match_by_filename_only = tk.BooleanVar(value=False)
         
         # Fuzzy Match
-        self.fuzzy_threshold = tk.DoubleVar(value=90.0)
+        self.fuzzy_threshold = tk.DoubleVar(value=100.0)
 
         self.mappings = {}
         self.mappings_by_name = {}
@@ -98,11 +98,11 @@ class TextMapperApp(tk.Tk):
         
         config_subframe = ttk.Frame(actions_line)
         config_subframe.pack(side='left', fill='x')
-        ttk.Label(config_subframe, text="Enc A/B(FALLBACK):").pack(side='left', padx=(0, 2))
+        ttk.Label(config_subframe, text="Enc A/B:").pack(side='left', padx=(0, 2))
         ttk.Combobox(config_subframe, textvariable=self.encoding_ab, values=self.encoding_options, width=9, state="readonly").pack(side='left', padx=2)
-        ttk.Label(config_subframe, text="Enc C/Out(FALLBACK):").pack(side='left', padx=(10, 2))
+        ttk.Label(config_subframe, text="Enc C/Out:").pack(side='left', padx=(10, 2))
         ttk.Combobox(config_subframe, textvariable=self.encoding_c_out, values=self.encoding_options, width=9, state="readonly").pack(side='left', padx=2)
-        ttk.Label(config_subframe, text="EXT:").pack(side='left', padx=(10, 2))
+        ttk.Label(config_subframe, text="Ext:").pack(side='left', padx=(10, 2))
         ttk.Entry(config_subframe, textvariable=self.file_extension, width=7).pack(side='left', padx=2)
         
         self.btn_apply = ttk.Button(actions_line, text="2. Aplicar em C + Relatório", command=self.apply_mappings, state='disabled', style="Action.TButton")
@@ -289,7 +289,7 @@ class TextMapperApp(tk.Tk):
                 self.after(0, lambda v=i+1: self.progress.config(value=v))
             
             with open(report_path, 'w', encoding='utf-8') as r:
-                r.write(f"RELATÓRIO v1.4.1 - {datetime.now().strftime('%d/%m/%Y %H:%M')}\n")
+                r.write(f"RELATÓRIO v1.5 - {datetime.now().strftime('%d/%m/%Y %H:%M')}\n")
                 r.write(f"Modo: {'Nome' if by_name_only else 'Estrutura'} | Fuzzy: {threshold*100:.0f}%\n")
                 r.write(f"Pasta de Saída: {out_dir_name}\n")
                 r.write("="*80 + "\n\n")
@@ -316,49 +316,40 @@ class TextMapperApp(tk.Tk):
 
     def _show_instructions(self):
         help_window = tk.Toplevel(self)
-        help_window.title("Guia de Uso e Funções - Text Mapper Pro 1.4.1")
-        help_window.geometry("600x500")
-        
-        # Fonte maior e mais grossa conforme solicitado
-        font_help = ("Segoe UI", 12, "bold")
-        txt = tk.Text(help_window, wrap='word', padx=20, pady=20, font=font_help)
-        
-        instructions = """TEXT TRANSLATION MAPPER PRO 1.4.1 — GUIA COMPLETO
+        help_window.title("Ajuda v1.5")
+        help_window.geometry("600x450")
+        txt = tk.Text(help_window, wrap='word', padx=10, pady=10)
+        instructions = """TEXT TRANSLATION MAPPER PRO 1.5 — FUZZY MATCH IMPLEMENTADO
 
-O QUE ESTE PROGRAMA FAZ?
-Este software automatiza a tradução de arquivos de texto comparando arquivos originais (Pasta A) com suas versões já traduzidas (Pasta B) para criar um dicionário e aplicá-lo em novos arquivos (Pasta C).
-
----
-1. CONCEITO DAS PASTAS (A-B-C)
----
-• PASTA A (Originais): Seus arquivos de referência na língua original (ex: Inglês).
-• PASTA B (Traduções): Os mesmos arquivos da Pasta A, mas já traduzidos (ex: Português). O programa aprende com o par A-B.
-• PASTA C (A Traduzir): Os arquivos novos ou atualizados que você quer traduzir agora.
+NOVO NA VERSÃO 1.5:
+→ Fuzzy Match: Agora o programa pode encontrar traduções mesmo que a linha original em C não seja 100% idêntica à de A.
+→ Controle de Limiar: Você pode ajustar a sensibilidade do Fuzzy Match na interface. 
+   - 100%: Apenas matches exatos (comportamento antigo).
+   - 90%: Aceita pequenas variações (pontuação, espaços, typos).
 
 ---
-2. FUNÇÕES PRINCIPAIS
+1. CONCEITO DAS PASTAS
 ---
-• CONSTRUIR DICIONÁRIO: Cria o mapa de tradução baseado nos arquivos comuns entre A e B.
-• APLICAR TRADUÇÃO: Traduz os arquivos da Pasta C usando o dicionário criado.
-• FUZZY MATCH (BUSCA APROXIMADA): Permite traduzir frases mesmo com pequenas diferenças (pontos, espaços, typos).
-   - 100%: Apenas frases idênticas.
-   - 80-90%: Recomendado para a maioria dos casos.
+• PASTA A (Originais): Arquivos originais (ex: Inglês).
+• PASTA B (Traduções): Mesmos arquivos de A, mas traduzidos (ex: Português).
+• PASTA C (A Traduzir): Arquivos novos que receberão a tradução baseada no par A/B.
 
 ---
-3. PASSO A PASSO
+2. PASSO A PASSO
 ---
-1. Selecione as pastas A, B e C e defina a extensão (ex: .txt).
-2. Clique em "1. Construir Mapeamentos" e aguarde o processamento.
-3. Ajuste a sensibilidade do Fuzzy Match se necessário.
+1. Selecione as pastas e a extensão.
+2. Ajuste o Limiar de Fuzzy Match (recomendado: 90%).
+3. Clique em "1. Construir Mapeamentos".
 4. Clique em "2. Aplicar em C + Relatório".
-5. Verifique o arquivo 'relatorio.txt' gerado para revisar falhas ou matches aproximados.
 
 ---
-4. DICAS TÉCNICAS
+3. RELATÓRIO E QUALIDADE
 ---
-• Codificação: Se houver erros de caracteres, tente alternar entre UTF-8 e CP1252.
-• Relatório: O relatório detalha exatamente o que foi traduzido e o que falhou.
-"""
+O arquivo 'relatorio.txt' agora indica:
+• [EXATO]: Match 100% idêntico.
+• [FUZZY XX%]: Match aproximado com a porcentagem de similaridade.
+• [FALHA]: Linhas que não atingiram o limiar mínimo.
+        """
         txt.insert('1.0', instructions)
         txt.config(state='disabled')
         txt.pack(fill='both', expand=True)
