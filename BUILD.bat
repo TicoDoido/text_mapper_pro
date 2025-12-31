@@ -52,7 +52,7 @@ echo   Gerando executável...
 echo ========================================
 echo.
 
-pyinstaller --onefile --windowed --icon=image.ico TEXT_MAPPER_PRO_1.4.py
+pyinstaller --onefile --windowed --icon=image.ico TEXT_MAPPER_PRO_1.4.1.py
 
 if errorlevel 1 (
     echo.
@@ -66,6 +66,6 @@ echo ========================================
 echo   Pronto!
 echo ========================================
 echo.
-echo Arquivo: %~dp0dist\TEXT_MAPPER_PRO_1.4.exe
+echo Arquivo: %~dp0dist\TEXT_MAPPER_PRO_1.4.1.exe
 echo.
 pause
