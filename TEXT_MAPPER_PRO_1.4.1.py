@@ -10,7 +10,7 @@ import difflib
 class TextMapperApp(tk.Tk):
     def __init__(self):
         super().__init__()
-        self.title('Text Translation Mapper Pro — 1.5')
+        self.title('Text Translation Mapper Pro — 1.4.1')
         self.geometry('1100x630')
         self.minsize(750, 600)
 
@@ -289,7 +289,7 @@ class TextMapperApp(tk.Tk):
                 self.after(0, lambda v=i+1: self.progress.config(value=v))
             
             with open(report_path, 'w', encoding='utf-8') as r:
-                r.write(f"RELATÓRIO v1.5 - {datetime.now().strftime('%d/%m/%Y %H:%M')}\n")
+                r.write(f"RELATÓRIO v1.4.1 - {datetime.now().strftime('%d/%m/%Y %H:%M')}\n")
                 r.write(f"Modo: {'Nome' if by_name_only else 'Estrutura'} | Fuzzy: {threshold*100:.0f}%\n")
                 r.write(f"Pasta de Saída: {out_dir_name}\n")
                 r.write("="*80 + "\n\n")
@@ -316,14 +316,14 @@ class TextMapperApp(tk.Tk):
 
     def _show_instructions(self):
         help_window = tk.Toplevel(self)
-        help_window.title("Guia de Uso e Funções - Text Mapper Pro 1.5")
+        help_window.title("Guia de Uso e Funções - Text Mapper Pro 1.4.1")
         help_window.geometry("600x500")
         
         # Fonte maior e mais grossa conforme solicitado
         font_help = ("Segoe UI", 12, "bold")
         txt = tk.Text(help_window, wrap='word', padx=20, pady=20, font=font_help)
         
-        instructions = """TEXT TRANSLATION MAPPER PRO 1.5 — GUIA COMPLETO
+        instructions = """TEXT TRANSLATION MAPPER PRO 1.4.1 — GUIA COMPLETO
 
 O QUE ESTE PROGRAMA FAZ?
 Este software automatiza a tradução de arquivos de texto comparando arquivos originais (Pasta A) com suas versões já traduzidas (Pasta B) para criar um dicionário e aplicá-lo em novos arquivos (Pasta C).
