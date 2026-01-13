@@ -31,6 +31,12 @@ class TextMapperApp(tk.Tk):
         self.file_extension = tk.StringVar(value='.txt')
         self.match_by_filename_only = tk.BooleanVar(value=False)
         
+        # NOVO: Brute force por ORDEM (ignorar nomes)
+        self.brute_force_by_order = tk.BooleanVar(value=False)
+        
+        # NOVO: Ignorar linhas que começam com certos caracteres
+        self.ignore_prefixes = tk.StringVar(value="")
+        
         # Modo de mapeamento
         self.mapping_mode = tk.StringVar(value="content")
         self.validate_positional = tk.BooleanVar(value=True)
@@ -40,6 +46,7 @@ class TextMapperApp(tk.Tk):
 
         self.mappings = {}
         self.mappings_by_name = {}
+        self.mappings_list = []  # Lista ordenada de mapeamentos para brute force
 
         self.style = ttk.Style(self)
         self._setup_styles()
@@ -89,6 +96,15 @@ class TextMapperApp(tk.Tk):
         self.fuzzy_scale.config(state='normal')
         self.fuzzy_label.config(state='normal')
 
+    def _toggle_brute_force(self):
+        """Desabilita 'Apenas Nome' quando Brute Force estiver ativo"""
+        if self.brute_force_by_order.get():
+            self.match_by_filename_only_check.config(state='disabled')
+            self.match_by_filename_only.set(True)  # Força True
+            self._log("Modo Brute Force ativado: Ignorando nomes, usando ORDEM", "INFO")
+        else:
+            self.match_by_filename_only_check.config(state='normal')
+
     def _build_ui(self):
         main_container = ttk.Frame(self, padding="12")
         main_container.pack(fill='both', expand=True)
@@ -123,6 +139,11 @@ class TextMapperApp(tk.Tk):
         ttk.Label(config_subframe, text="Ext:").pack(side='left', padx=(10, 2))
         ttk.Entry(config_subframe, textvariable=self.file_extension, width=7).pack(side='left', padx=2)
         
+        # NOVO: Checkbox para Brute Force por ORDEM
+        ttk.Checkbutton(config_subframe, text="Brute Force (Usar ORDEM)", 
+                       variable=self.brute_force_by_order,
+                       command=self._toggle_brute_force).pack(side='left', padx=(20, 2))
+        
         self.btn_apply = ttk.Button(actions_line, text="2. Aplicar em C + Relatório", command=self.apply_mappings, state='disabled', style="Action.TButton")
         self.btn_apply.pack(side='right', padx=4)
         self.btn_build = ttk.Button(actions_line, text="1. Construir Mapeamentos (A ↔ B)", command=self.build_mappings, style="Action.TButton")
@@ -134,7 +155,9 @@ class TextMapperApp(tk.Tk):
         search_subframe = ttk.Frame(options_frame)
         search_subframe.pack(side='left', fill='x')
         ttk.Checkbutton(search_subframe, text="Subpastas", variable=self.recursive_search).pack(side='left', padx=(0, 15))
-        ttk.Checkbutton(search_subframe, text="Apenas Nome (Ignorar Estrutura)", variable=self.match_by_filename_only).pack(side='left', padx=5)
+        self.match_by_filename_only_check = ttk.Checkbutton(search_subframe, text="Apenas Nome (Ignorar Estrutura)", 
+                                                           variable=self.match_by_filename_only)
+        self.match_by_filename_only_check.pack(side='left', padx=5)
         
         mode_subframe = ttk.Frame(options_frame)
         mode_subframe.pack(side='left', padx=20)
@@ -147,9 +170,16 @@ class TextMapperApp(tk.Tk):
         self.validate_check = ttk.Checkbutton(validate_subframe, text="Validar similaridade na posição", variable=self.validate_positional)
         self.validate_check.pack(side='left', padx=10)
         
+        # NOVO: Campo para ignorar prefixos
+        ignore_subframe = ttk.Frame(options_frame)
+        ignore_subframe.pack(side='left', padx=(10, 0))
+        ttk.Label(ignore_subframe, text="Ignorar linhas:").pack(side='left')
+        ttk.Entry(ignore_subframe, textvariable=self.ignore_prefixes, width=6).pack(side='left', padx=5)
+        ttk.Label(ignore_subframe, text="(ex: ; //)").pack(side='left')
+
         fuzzy_subframe = ttk.Frame(options_frame)
         fuzzy_subframe.pack(side='right')
-        ttk.Label(fuzzy_subframe, text="Limiar de Similaridade:").pack(side='left', padx=(20, 5))
+        ttk.Label(fuzzy_subframe, text="Similaridade:").pack(side='left', padx=(20, 5))
         self.fuzzy_scale = ttk.Scale(fuzzy_subframe, from_=0, to=100, orient='horizontal', variable=self.fuzzy_threshold, length=200)
         self.fuzzy_scale.pack(side='left', padx=5)
         self.fuzzy_label = ttk.Label(fuzzy_subframe, text=f"{self.fuzzy_threshold.get():.0f}%", width=6)
@@ -238,6 +268,15 @@ class TextMapperApp(tk.Tk):
         
         return raw.decode('utf-8', errors='replace').splitlines(keepends=True)
 
+    def _should_ignore(self, line, prefixes):
+        if not prefixes:
+            return False
+        stripped = line.lstrip()
+        for p in prefixes:
+            if p and stripped.startswith(p):
+                return True
+        return False
+
     def build_mappings(self):
         if not self.folder_a.get() or not self.folder_b.get():
             messagebox.showerror("Erro", "Selecione pastas A e B.")
@@ -245,27 +284,43 @@ class TextMapperApp(tk.Tk):
         
         pattern = self._get_pattern()
         mode = self.mapping_mode.get()
+        prefixes = self.ignore_prefixes.get().split()
         self.btn_build.config(state='disabled')
         self.files_listbox.delete(0, 'end')
         self.tree.delete(*self.tree.get_children())
         self.mappings.clear()
         self.mappings_by_name.clear()
+        self.mappings_list = []  # Resetar lista ordenada
 
         def worker():
             path_a, path_b = Path(self.folder_a.get()), Path(self.folder_b.get())
             files_a = {f.relative_to(path_a).as_posix(): f for f in path_a.glob(pattern)}
             files_b = {f.relative_to(path_b).as_posix(): f for f in path_b.glob(pattern)}
+            
+            # Para A e B: arquivos DEVEM ter os mesmos nomes
             common = sorted(set(files_a.keys()) & set(files_b.keys()))
+            
             self.after(0, lambda: self.progress.config(maximum=len(common), value=0))
             
+            # Criar lista ordenada de mapeamentos para brute force
+            self.mappings_list = []
+            
             for i, rel in enumerate(common):
-                lines_a = self._read_file(files_a[rel], self.encoding_ab, force_encoding=None)
-                lines_b = self._read_file(files_b[rel], self.encoding_ab, force_encoding=None)
+                file_a = files_a[rel]
+                file_b = files_b[rel]
+                
+                lines_a = self._read_file(file_a, self.encoding_ab, force_encoding=None)
+                lines_b = self._read_file(file_b, self.encoding_ab, force_encoding=None)
                 
                 mapping = []
                 for la, lb in zip(lines_a, lines_b):
                     orig = la.rstrip('\n\r')
                     trans = lb.rstrip('\n\r')
+                    
+                    # Ignorar se começar com prefixo
+                    if self._should_ignore(orig, prefixes):
+                        continue
+
                     mapping.append({
                         'orig': orig, 
                         'trans': trans
@@ -277,8 +332,10 @@ class TextMapperApp(tk.Tk):
                         if item['trans'] is not None:
                             content_map[item['orig']] = item['trans'] + '\n' if not item['trans'].endswith('\n') else item['trans']
                     self.mappings[rel] = content_map
+                    self.mappings_list.append(content_map)  # Adicionar à lista ordenada
                 else:
                     self.mappings[rel] = mapping
+                    self.mappings_list.append(mapping)  # Adicionar à lista ordenada
                 
                 fname = Path(rel).name
                 if fname not in self.mappings_by_name:
@@ -342,10 +399,16 @@ class TextMapperApp(tk.Tk):
         mode = self.mapping_mode.get()
         by_name_only = self.match_by_filename_only.get()
         threshold = self.fuzzy_threshold.get() / 100.0
+        brute_force = self.brute_force_by_order.get()
+        prefixes = self.ignore_prefixes.get().split()
 
         def worker():
             pattern = self._get_pattern()
             files_c_paths = list(Path(self.folder_c.get()).glob(pattern))
+            
+            # Ordenar arquivos C por nome para consistência
+            files_c_paths.sort(key=lambda x: x.name)
+            
             self.after(0, lambda: self.progress.config(maximum=len(files_c_paths), value=0))
             untranslated = {}
             processed = 0
@@ -358,8 +421,20 @@ class TextMapperApp(tk.Tk):
             
             for i, file_c in enumerate(files_c_paths):
                 rel = file_c.relative_to(Path(self.folder_c.get())).as_posix()
-                mapping = (self.mappings_by_name.get(file_c.name) if by_name_only 
-                           else self.mappings.get(rel))
+                
+                # NOVA LÓGICA: Brute Force por ORDEM
+                if brute_force:
+                    # Usar mapeamento baseado na ORDEM (índice)
+                    if i < len(self.mappings_list):
+                        mapping = self.mappings_list[i]
+                        self._log(f"Brute Force: índice {i} → '{rel}'", "INFO")
+                    else:
+                        mapping = None
+                        self._log(f"Aviso: Arquivo C '{rel}' sem mapeamento correspondente (índice {i})", "WARN")
+                else:
+                    # Comportamento original
+                    mapping = (self.mappings_by_name.get(file_c.name) if by_name_only 
+                              else self.mappings.get(rel))
                 
                 lines_c = self._read_file(file_c, self.encoding_c_out, force_enc_c)
                 output, issues_fail, issues_fuzzy = [], [], []
@@ -380,7 +455,7 @@ class TextMapperApp(tk.Tk):
                         keys = list(mapping.keys())
                         for idx, line in enumerate(lines_c, 1):
                             s = line.strip()
-                            if not s:
+                            if not s or self._should_ignore(line, prefixes):
                                 output.append(line)
                                 continue
                             if s in mapping:
@@ -404,9 +479,15 @@ class TextMapperApp(tk.Tk):
                                 mapping_list.append({'orig': orig, 'trans': trans})
                             mapping = mapping_list
                         
+                        # Para modo posicional, precisamos de um mapeamento que ignore as linhas de comentário
+                        # mas mantenha a correspondência de índice para as linhas de conteúdo.
+                        # No entanto, o modo posicional original do programa parece ser 1:1 por linha.
+                        # Se ignorarmos linhas no mapeamento, o índice mudará.
+                        # Vamos manter a lógica de ignorar apenas para o conteúdo.
+                        
                         for idx, line in enumerate(lines_c, 1):
                             s = line.strip()
-                            if not s:
+                            if not s or self._should_ignore(line, prefixes):
                                 output.append(line)
                                 continue
                             
@@ -415,42 +496,46 @@ class TextMapperApp(tk.Tk):
                                 item = mapping[map_idx]
                                 orig_s = item['orig'].strip() if item['orig'] else ""
                                 if not self.validate_positional.get():
-                                    trans = item['trans'] if item['trans'] else item['orig']
-                                    output.append(trans + '\n' if not trans.endswith('\n') else trans)
+                                    output.append(item['trans'] + '\n' if item['trans'] and not item['trans'].endswith('\n') else (item['trans'] or line))
                                 else:
                                     sim = difflib.SequenceMatcher(None, s, orig_s).ratio()
                                     if sim >= threshold:
-                                        trans = item['trans'] if item['trans'] else item['orig']
-                                        output.append(trans + '\n' if not trans.endswith('\n') else trans)
+                                        output.append(item['trans'] + '\n' if item['trans'] and not item['trans'].endswith('\n') else (item['trans'] or line))
                                         if sim < 1.0:
-                                            issues_fuzzy.append(f"L{idx}: [FUZZY POSICIONAL {sim*100:.0f}%] Esperado ≈ \"{orig_s}\"")
+                                            issues_fuzzy.append(f"L{idx}: [FUZZY POSICIONAL {sim*100:.0f}%] \"{s}\" → \"{orig_s}\"")
                                     else:
                                         output.append(line)
-                                        issues_fail.append(f"L{idx}: [FALHA POSICIONAL {sim*100:.0f}%] Esperado ≈ \"{orig_s}\" | Encontrado: \"{s}\"")
+                                        issues_fail.append(f"L{idx}: [FALHA POSICIONAL {sim*100:.0f}%] \"{s}\" vs \"{orig_s}\"")
                             else:
                                 output.append(line)
-                                issues_fail.append(f"L{idx}: [FORA DE ÍNDICE]")
+                                issues_fail.append(f"L{idx}: [FORA DE ÍNDICE] Sem tradução na linha {idx}")
+
+                # Salvar arquivo traduzido
+                out_file = out_dir / rel
+                out_file.parent.mkdir(parents=True, exist_ok=True)
+                
+                enc_out = self.encoding_c_out.get()
+                try:
+                    with open(out_file, 'w', encoding=enc_out) as f:
+                        f.writelines(output)
+                    processed += 1
+                except Exception as e:
+                    self._log(f"Erro ao salvar {out_file}: {e}", "WARN")
                 
                 if issues_fail or issues_fuzzy:
                     untranslated[rel] = issues_fail + issues_fuzzy
                 
-                out_file = out_dir / rel
-                out_file.parent.mkdir(parents=True, exist_ok=True)
-                try:
-                    with open(out_file, 'w', encoding=self.encoding_c_out.get(), newline='') as f:
-                        f.writelines(output)
-                except Exception as e:
-                    self._log(f"Erro ao escrever {out_file}, usando UTF-8: {e}", "WARN")
-                    with open(out_file, 'w', encoding='utf-8', newline='') as f:
-                        f.writelines(output)
-                
-                processed += 1
                 self.after(0, lambda v=i+1: self.progress.config(value=v))
-            
+
+            # Gerar Relatório
             with open(report_path, 'w', encoding='utf-8') as r:
                 validate_str = "Sim" if self.validate_positional.get() else "Não"
+                brute_str = "Sim" if brute_force else "Não"
                 r.write(f"RELATÓRIO v1.4.2 - {datetime.now().strftime('%d/%m/%Y %H:%M')}\n")
                 r.write(f"Modo: {mode.capitalize()} | Validar similaridade: {validate_str} | Limiar: {threshold*100:.0f}% | Busca: {'Nome' if by_name_only else 'Estrutura'}\n")
+                r.write(f"Brute Force por ORDEM: {brute_str}\n")
+                r.write(f"Ignorar Prefixos: {' '.join(prefixes) if prefixes else 'Nenhum'}\n")
+                r.write(f"Arquivos A/B mapeados: {len(self.mappings_list)} | Arquivos C processados: {len(files_c_paths)}\n")
                 r.write(f"Forçar Codificação em C: {'Sim' if self.force_encoding_c.get() else 'Não'}\n")
                 r.write(f"Codificação A/B: {self.encoding_ab.get()} | Codificação Saída: {self.encoding_c_out.get()}\n")
                 r.write(f"Pasta de Saída: {out_dir_name}\n")
@@ -472,6 +557,11 @@ class TextMapperApp(tk.Tk):
                 
                 r.write(f"\nTotal de arquivos processados: {processed}\n")
                 r.write(f"Arquivos com problemas: {len(untranslated)}\n")
+                if brute_force:
+                    r.write(f"\nNOTA: Modo Brute Force por ORDEM foi usado.\n")
+                    r.write(f"Primeiro arquivo A/B → Primeiro arquivo C\n")
+                    r.write(f"Segundo arquivo A/B → Segundo arquivo C\n")
+                    r.write(f"e assim por diante...\n")
             
             self.after(0, lambda: self._apply_finished(processed, out_dir, report_path))
         
@@ -489,47 +579,55 @@ class TextMapperApp(tk.Tk):
     def _show_instructions(self):
         help_window = tk.Toplevel(self)
         help_window.title("Ajuda v1.4.2")
-        help_window.geometry("600x450")
+        help_window.geometry("650x500")
         txt = tk.Text(help_window, wrap='word', padx=10, pady=10)
         txt.configure(font=("Segoe UI", 12))
-        instructions = """TEXT TRANSLATION MAPPER PRO 1.4.2 — FUZZY MATCH IMPLEMENTADO
+        instructions = """TEXT TRANSLATION MAPPER PRO 1.4.2 — COM OPÇÃO DE IGNORAR PREFIXOS
 
 NOVO NA VERSÃO 1.4.2:
-→ Fuzzy Match: Agora o programa pode encontrar traduções mesmo que a linha original em C não seja 100% idêntica à de A.
-→ Controle de Limiar: Você pode ajustar a sensibilidade do Fuzzy Match na interface. 
-   - 100%: Apenas matches exatos (comportamento antigo).
-   - 90%: Aceita pequenas variações (pontuação, espaços, typos).
+→ Ignorar Linhas: Agora você pode definir caracteres que, se estiverem no
+início da linha, farão com que a linha seja ignorada no mapeamento e mantida
+original na saída.
+→ Exemplo: Digite ";" ou "//" no campo "Ignorar linhas"
+para pular comentários de código.
+→ Forçar em C vai forçar a codificação de saída
+→ Modo conteúdo aplica a tradução de A/B em qualquer linha de C
+→ Modo posicional só aplica na mesma linha(ex: linha 9 em A/B na linha 9 em C)
+→ Brute Force ignora os nomes dos arquivos em C, exige mesma ordem e quantidade
+→ Subpastas e Apenas Nome para buscar o arquivo onde quer que ele esteja
 
 ---
 1. CONCEITO DAS PASTAS
 ---
 • PASTA A (Originais): Arquivos originais (ex: Inglês).
-• PASTA B (Traduções): Mesmos arquivos de A, mas traduzidos (ex: Português).
-• PASTA C (A Traduzir): Arquivos novos que receberão a tradução baseada no par A/B.
+• PASTA B (Traduções): Mesmos arquivos de A, mas traduzidos (ex: Português). 
+   A e B DEVEM ter os mesmos nomes e mesma quantidade!
+• PASTA C (A Traduzir): Arquivos novos com nomes DIFERENTES.
+   Mesma quantidade que A/B, na mesma ordem.
 
 ---
 2. PASSO A PASSO
 ---
 1. Selecione as pastas e a extensão.
-2. Ajuste o Limiar de Fuzzy Match (recomendado: 90%).
-3. Clique em "1. Construir Mapeamentos".
-4. Clique em "2. Aplicar em C + Relatório".
+2. Se necessário, defina os prefixos para ignorar (ex: ; //).
+3. Se C tiver nomes diferentes de A/B, marque "Brute Force (Usar ORDEM)".
+4. Ajuste o Limiar de Fuzzy Match (recomendado: 90%).
+5. Clique em "1. Construir Mapeamentos".
+6. Clique em "2. Aplicar em C + Relatório".
 
 ---
-3. RELATÓRIO E QUALIDADE
+3. COMO FUNCIONA O IGNORAR PREFIXOS
 ---
-O arquivo 'relatorio.txt' agora indica:
-• [EXATO]: Match 100% idêntico.
-• [FUZZY XX%]: Match aproximado com a porcentagem de similaridade.
-• [FALHA]: Linhas que não atingiram o limiar mínimo.
-
+1. Durante a construção do mapeamento (A/B), linhas que começam com os caracteres definidos são ignoradas.
+2. Durante a aplicação em C, essas mesmas linhas são detectadas e mantidas exatamente como estão no arquivo original de C.
+3. Isso evita que comentários ou códigos sejam "traduzidos" erroneamente ou causem falhas de mapeamento.
 
 ---
-DICAS:
-- Preview: Clique em qualquer arquivo na lista para ver o mapeamento
-- Forçar em C: Use apenas quando a detecção automática falhar
-- Modo Conteúdo: Ideal para arquivos onde as linhas podem estar em ordens diferentes
-- Modo Posicional: Ideal para arquivos com estrutura idêntica
+4. IMPORTANTE
+---
+• A e B DEVEM ter mesma quantidade e mesmos nomes.
+• C DEVE ter mesma quantidade que A/B.
+• A ordem é determinada pela ordenação ALFABÉTICA dos nomes.
 """
         txt.insert('1.0', instructions)
         txt.config(state='disabled')
