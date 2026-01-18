@@ -454,7 +454,7 @@ class TextMapperApp(tk.Tk):
                         
                         keys = list(mapping.keys())
                         for idx, line in enumerate(lines_c, 1):
-                            s = line.strip()
+                            s = line.rstrip('\n\r')
                             if not s or self._should_ignore(line, prefixes):
                                 output.append(line)
                                 continue
