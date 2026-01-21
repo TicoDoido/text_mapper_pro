@@ -440,7 +440,7 @@ class TextMapperApp(tk.Tk):
                 output, issues_fail, issues_fuzzy = [], [], []
                 
                 if not mapping:
-                    output = lines_c
+                    output = [line.rstrip('\r\n') + '\n' for line in lines_c]
                     issues_fail.append("[!] Sem mapeamento encontrado para este arquivo.")
                 else:
                     if mode == "content":
@@ -454,9 +454,9 @@ class TextMapperApp(tk.Tk):
                         
                         keys = list(mapping.keys())
                         for idx, line in enumerate(lines_c, 1):
-                            s = line.rstrip('\n\r')
+                            s = line.rstrip('\r\n')
                             if not s or self._should_ignore(line, prefixes):
-                                output.append(line)
+                                output.append(s + '\n')
                                 continue
                             if s in mapping:
                                 output.append(mapping[s])
@@ -469,7 +469,7 @@ class TextMapperApp(tk.Tk):
                                     output.append(mapping[best])
                                     issues_fuzzy.append(f"L{idx}: [FUZZY GLOBAL {sim*100:.0f}%] \"{s}\" → \"{best}\"")
                                     continue
-                            output.append(line)
+                            output.append(s + '\n')
                             issues_fail.append(f"L{idx}: [FALHA GLOBAL] \"{s}\"")
                     else:
                         # Se mapping for dicionário, converter para lista
@@ -486,9 +486,9 @@ class TextMapperApp(tk.Tk):
                         # Vamos manter a lógica de ignorar apenas para o conteúdo.
                         
                         for idx, line in enumerate(lines_c, 1):
-                            s = line.strip()
+                            s = line.rstrip('\r\n')
                             if not s or self._should_ignore(line, prefixes):
-                                output.append(line)
+                                output.append(s + '\n')
                                 continue
                             
                             map_idx = idx - 1
@@ -496,18 +496,18 @@ class TextMapperApp(tk.Tk):
                                 item = mapping[map_idx]
                                 orig_s = item['orig'].strip() if item['orig'] else ""
                                 if not self.validate_positional.get():
-                                    output.append(item['trans'] + '\n' if item['trans'] and not item['trans'].endswith('\n') else (item['trans'] or line))
+                                    output.append(item['trans'] + '\n' if item['trans'] and not item['trans'].endswith('\n') else (item['trans'] or (s + '\n')))
                                 else:
                                     sim = difflib.SequenceMatcher(None, s, orig_s).ratio()
                                     if sim >= threshold:
-                                        output.append(item['trans'] + '\n' if item['trans'] and not item['trans'].endswith('\n') else (item['trans'] or line))
+                                        output.append(item['trans'] + '\n' if item['trans'] and not item['trans'].endswith('\n') else (item['trans'] or (s + '\n')))
                                         if sim < 1.0:
                                             issues_fuzzy.append(f"L{idx}: [FUZZY POSICIONAL {sim*100:.0f}%] \"{s}\" → \"{orig_s}\"")
                                     else:
-                                        output.append(line)
+                                        output.append(s + '\n')
                                         issues_fail.append(f"L{idx}: [FALHA POSICIONAL {sim*100:.0f}%] \"{s}\" vs \"{orig_s}\"")
                             else:
-                                output.append(line)
+                                output.append(s + '\n')
                                 issues_fail.append(f"L{idx}: [FORA DE ÍNDICE] Sem tradução na linha {idx}")
 
                 # Salvar arquivo traduzido
