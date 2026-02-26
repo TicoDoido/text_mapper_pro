@@ -294,20 +294,22 @@ class TextMapperApp(tk.Tk):
 
         def worker():
             path_a, path_b = Path(self.folder_a.get()), Path(self.folder_b.get())
-            files_a = {f.relative_to(path_a).as_posix(): f for f in path_a.glob(pattern)}
-            files_b = {f.relative_to(path_b).as_posix(): f for f in path_b.glob(pattern)}
+            files_a = {f.relative_to(path_a).as_posix().lower(): f for f in path_a.glob(pattern)}
+            files_b = {f.relative_to(path_b).as_posix().lower(): f for f in path_b.glob(pattern)}
             
             # Para A e B: arquivos DEVEM ter os mesmos nomes
-            common = sorted(set(files_a.keys()) & set(files_b.keys()))
+            common = sorted(set(files_a.keys()) & set(files_b.keys()), key=str.lower)
             
             self.after(0, lambda: self.progress.config(maximum=len(common), value=0))
             
             # Criar lista ordenada de mapeamentos para brute force
             self.mappings_list = []
             
-            for i, rel in enumerate(common):
-                file_a = files_a[rel]
-                file_b = files_b[rel]
+            for i, rel_lower in enumerate(common):
+                # Recuperar rel original de files_a ou files_b
+                file_a = files_a[rel_lower]
+                file_b = files_b[rel_lower]
+                rel = file_a.relative_to(path_a).as_posix()  # Usar o rel original para display/log
                 
                 lines_a = self._read_file(file_a, self.encoding_ab, force_encoding=None)
                 lines_b = self._read_file(file_b, self.encoding_ab, force_encoding=None)
@@ -331,15 +333,16 @@ class TextMapperApp(tk.Tk):
                     for item in mapping:
                         if item['trans'] is not None:
                             content_map[item['orig']] = item['trans'] + '\n' if not item['trans'].endswith('\n') else item['trans']
-                    self.mappings[rel] = content_map
+                    self.mappings[rel_lower] = content_map
                     self.mappings_list.append(content_map)  # Adicionar à lista ordenada
                 else:
-                    self.mappings[rel] = mapping
+                    self.mappings[rel_lower] = mapping
                     self.mappings_list.append(mapping)  # Adicionar à lista ordenada
                 
                 fname = Path(rel).name
-                if fname not in self.mappings_by_name:
-                    self.mappings_by_name[fname] = self.mappings[rel]
+                fname_lower = fname.lower()
+                if fname_lower not in self.mappings_by_name:
+                    self.mappings_by_name[fname_lower] = self.mappings[rel_lower]
                 
                 self.after(0, lambda d=rel: self.files_listbox.insert('end', d))
                 self.after(0, lambda v=i+1: self.progress.config(value=v))
@@ -358,7 +361,7 @@ class TextMapperApp(tk.Tk):
         sel = self.files_listbox.curselection()
         if not sel: return
         fname = self.files_listbox.get(sel[0])
-        mapping = self.mappings.get(fname)
+        mapping = self.mappings.get(fname.lower())
         if not mapping: return
         mode = self.mapping_mode.get()
         self.tree.delete(*self.tree.get_children())
@@ -406,8 +409,8 @@ class TextMapperApp(tk.Tk):
             pattern = self._get_pattern()
             files_c_paths = list(Path(self.folder_c.get()).glob(pattern))
             
-            # Ordenar arquivos C por nome para consistência
-            files_c_paths.sort(key=lambda x: x.name)
+            # Ordenar arquivos C por nome para consistência, ignorando case
+            files_c_paths.sort(key=lambda x: x.name.lower())
             
             self.after(0, lambda: self.progress.config(maximum=len(files_c_paths), value=0))
             untranslated = {}
@@ -421,6 +424,7 @@ class TextMapperApp(tk.Tk):
             
             for i, file_c in enumerate(files_c_paths):
                 rel = file_c.relative_to(Path(self.folder_c.get())).as_posix()
+                rel_lower = rel.lower()
                 
                 # NOVA LÓGICA: Brute Force por ORDEM
                 if brute_force:
@@ -433,8 +437,8 @@ class TextMapperApp(tk.Tk):
                         self._log(f"Aviso: Arquivo C '{rel}' sem mapeamento correspondente (índice {i})", "WARN")
                 else:
                     # Comportamento original
-                    mapping = (self.mappings_by_name.get(file_c.name) if by_name_only 
-                              else self.mappings.get(rel))
+                    mapping = (self.mappings_by_name.get(file_c.name.lower()) if by_name_only 
+                              else self.mappings.get(rel_lower))
                 
                 lines_c = self._read_file(file_c, self.encoding_c_out, force_enc_c)
                 output, issues_fail, issues_fuzzy = [], [], []
@@ -582,7 +586,7 @@ class TextMapperApp(tk.Tk):
         help_window.geometry("650x500")
         txt = tk.Text(help_window, wrap='word', padx=10, pady=10)
         txt.configure(font=("Segoe UI", 12))
-        instructions = """TEXT TRANSLATION MAPPER PRO 1.4.2 — COM OPÇÃO DE IGNORAR PREFIXOS
+        instructions = """TEXT TRANSLATION MAPPER PRO 1.4.2
 
 NOVO NA VERSÃO 1.4.2:
 → Ignorar Linhas: Agora você pode definir caracteres que, se estiverem no
