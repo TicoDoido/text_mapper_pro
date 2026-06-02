@@ -82,5 +82,5 @@ Ao final:
 
 - Python 3.9+
 - Dependências:
-  ```bash
+
   pip install chardet
