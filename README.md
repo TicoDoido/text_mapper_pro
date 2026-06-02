@@ -20,7 +20,7 @@ e aplicando automaticamente essas traduções em um terceiro conjunto de arquivo
 
 ---
 
-## 🔤 Detecção Inteligente de Encoding (Versão 1.4+)  
+## 🔤 Detecção Inteligente de Encoding (Versão 1.5+)  
 
 A leitura dos arquivos utiliza um sistema robusto de detecção automática:  
 
